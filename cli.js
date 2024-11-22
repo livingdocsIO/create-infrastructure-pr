@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 const argv = require('yargs')
-  .demandOption(['gh-token', 'owner', 'repo', 'releaseBranch', 'env', 'downstreamTag'])
+  .demandOption(['gh-token', 'owner', 'repo', 'release-branch', 'env', 'tag'])
   .option('gh-approval-token', {
     description: 'gh token to auto approve the opened pull request',
-    type: 'string'
-  })
-  .option('customer', {
-    description: 'customer name',
     type: 'string'
   })
   .option('infrastructure-path', {
