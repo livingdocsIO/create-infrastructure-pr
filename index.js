@@ -1,19 +1,48 @@
 const semver = require('semver')
-// const gitGetTags = require('./git/get-tags')
 const gitGetContent = require('./git/get-content')
 const gitGetShaBranch = require('./git/get-sha-branch')
 const gitCreateBranch = require('./git/create-branch')
-const updateContent = require('./git/update-content')
+const createTree = require('./git/create-tree')
+const createCommit = require('./git/create-commit')
+const createBlob = require('./git/create-blob')
+const updateRef = require('./git/update-ref')
 const createPullRequest = require('./git/create-pull-request')
 const createApprovalForPullRequest = require('./git/create-approval-for-pull-request')
 
+async function updateYamlFile ({owner, repo, token, path, tag}) {
+  const base64Obj = await gitGetContent({owner, repo, token, path})
+  if (base64Obj) {
+    const content = Buffer.from(base64Obj.content, 'base64').toString()
+    const updatedContent = content.replace(/range: ".*"/, `range: "${tag}"`)
+    const contentUpdate = Buffer.from(updatedContent).toString('base64')
+    const blob = await createBlob({owner, repo, token, content: contentUpdate})
+    return {
+      path: base64Obj.path,
+      mode: '100644',
+      type: 'blob',
+      sha: blob.sha
+    }
+  }
+  return null
+}
+
+function getFilePath ({infrastructurePath, env, type}) {
+  return `apps/${infrastructurePath}/${env}/flux/image-${infrastructurePath}-${type}.yaml`
+}
+
+function getTag ({tag, env}) {
+  if (env === 'prod') {
+    return semver.coerce(tag).toString() // `v4.20.11` -> `4.20.11`
+  }
+  return semver.coerce(tag).toString().replace(/\d+$/, 'x') // `4.20.11` -> `4.20.x`
+}
+
 // main application
-module.exports = async ({owner, repo, ghToken, ghApprovalToken, customer, infrastructurePath, env, releaseBranch, downstreamTag}) => { // eslint-disable-line max-len
+module.exports = async ({owner, repo, infrastructurePath, env, releaseBranch, tag, ghToken, ghApprovalToken}) => { // eslint-disable-line max-len
   const token = ghToken
   const latestSha = await gitGetShaBranch({owner, repo, token})
-  const downstreamTagWildcard = semver.coerce(downstreamTag).toString().replace(/\d+$/, 'x') // `4.20.11` -> `4.20.x`
   const combinedChanges = []
-  let lastCommit
+  tag = getTag({tag, env})
 
   // create bump pr branch
   const branchName = `${env}-${releaseBranch}`
@@ -26,151 +55,98 @@ module.exports = async ({owner, repo, ghToken, ghApprovalToken, customer, infras
     sha: latestSha
   })
 
-  // change the content in apps/${infrastructurePath}/${env}/flux/image-${customer}-editor.yaml
-  // replace:
-  // policy:
-  //   semver:
-  //     range: "x.x.x"
-  // with:
-  // policy:
-  //   semver:
-  //     range: "${downstreamTagWildcard}"
-
-  const base64ObjEditor = await gitGetContent({
+  const editorChange = await updateYamlFile({
     owner,
     repo,
     token,
-    path: `apps/${infrastructurePath}/${env}/flux/image-${customer}-editor.yaml`
+    path: getFilePath({infrastructurePath, env, type: 'editor'}),
+    tag
   })
+  if (editorChange) combinedChanges.push(editorChange)
 
-  if (base64ObjEditor) {
-    const contentEditor = Buffer.from(base64ObjEditor.content, 'base64').toString()
-    const updatedContentEditor = contentEditor.replace(/range: ".*"/, `range: "${downstreamTagWildcard}"`)
-    const contentUpdateEditor = Buffer.from(updatedContentEditor).toString('base64')
-    combinedChanges.push({
-      path: base64ObjEditor.path,
-      content: contentUpdateEditor,
-      sha: base64ObjEditor.sha
-    })
-  }
-
-  // // add commit
-  // const editorCommit = await updateContent({
-  //   owner,
-  //   repo,
-  //   token,
-  //   path: base64ObjEditor.path,
-  //   message: `chore(release-management): Bump editor version in ${env} for release management`,
-  //   content: contentUpdateEditor,
-  //   sha: base64ObjEditor.sha,
-  //   branch: branchName
-  // })
-
-  // console.log(editorCommit)
-  // change the content in apps/${infrastructurePath}/${env}/flux/image-${customer}-server.yaml
-
-  const base64ObjServer = await gitGetContent({
+  const serverChange = await updateYamlFile({
     owner,
     repo,
     token,
-    path: `apps/${infrastructurePath}/${env}/flux/image-${customer}-server.yaml`,
-    branch: branchName
+    path: getFilePath({infrastructurePath, env, type: 'server'}),
+    tag
   })
-
-  if (base64ObjServer) {
-    const contentServer = Buffer.from(base64ObjServer.content, 'base64').toString()
-    const updatedContentServer = contentServer.replace(/range: ".*"/, `range: "${downstreamTagWildcard}"`)
-    const contentUpdateServer = Buffer.from(updatedContentServer).toString('base64')
-    combinedChanges.push({
-      path: base64ObjServer.path,
-      content: contentUpdateServer,
-      sha: base64ObjServer.sha
-    })
-  }
+  if (serverChange) combinedChanges.push(serverChange)
 
   if (env === 'prod') {
-    const base64ObjEditorStage = await gitGetContent({
+    const editorStageChange = await updateYamlFile({
       owner,
       repo,
       token,
-      path: `apps/${infrastructurePath}/stage/flux/image-${customer}-editor.yaml`,
-      branch: branchName
+      path: getFilePath({infrastructurePath, env: 'stage', type: 'editor'}),
+      tag: 'x.x.x'
     })
+    if (editorStageChange) combinedChanges.push(editorStageChange)
 
-    if (base64ObjEditorStage) {
-      const contentEditorStage = Buffer.from(base64ObjEditorStage.content, 'base64').toString()
-      const updatedContentEditorStage = contentEditorStage.replace(/range: ".*"/, `range: "x.x.x"`)
-      const contentUpdateEditorStage = Buffer.from(updatedContentEditorStage).toString('base64')
-      combinedChanges.push({
-        path: base64ObjEditorStage.path,
-        content: contentUpdateEditorStage,
-        sha: base64ObjEditorStage.sha
-      })
-    }
-
-    const base64ObjServerStage = await gitGetContent({
+    const serverStageChange = await updateYamlFile({
       owner,
       repo,
       token,
-      path: `apps/${infrastructurePath}/stage/flux/image-${customer}-server.yaml`,
-      branch: branchName
+      path: getFilePath({infrastructurePath, env: 'stage', type: 'server'}),
+      tag: 'x.x.x'
     })
-
-    if (base64ObjServerStage) {
-      const contentServerStage = Buffer.from(base64ObjServerStage.content, 'base64').toString()
-      const updatedContentServerStage = contentServerStage.replace(/range: ".*"/, `range: "x.x.x"`)
-      const contentUpdateServerStage = Buffer.from(updatedContentServerStage).toString('base64')
-      combinedChanges.push({
-        path: base64ObjServerStage.path,
-        content: contentUpdateServerStage,
-        sha: base64ObjServerStage.sha
-      })
-    }
+    if (serverStageChange) combinedChanges.push(serverStageChange)
   }
 
   if (combinedChanges.length === 0) {
-    throw new Error('No files to update')
+    throw new Error('Could not find files to update')
   }
 
-  for (const change of combinedChanges) {
-    lastCommit = await updateContent({
-      owner,
-      repo,
-      token,
-      path: change.path,
-      message: `chore(release-management): Bump versions in ${env} on ${change.path}`,
-      content: change.content,
-      sha: change.sha,
-      branch: branchName
-    })
-  }
+  // Create a new tree with the changes
+  const newTree = await createTree({
+    owner,
+    repo,
+    token,
+    baseTree: latestSha,
+    tree: combinedChanges
+  })
+
+  const newCommit = await createCommit({
+    owner,
+    repo,
+    token,
+    message: `chore(release-management): Bump versions in ${env} for release management`,
+    tree: newTree.sha,
+    parents: [latestSha]
+  })
+
+  // Update the reference to point to the new commit
+  await updateRef({
+    owner,
+    repo,
+    token,
+    ref: `heads/${branchName}`,
+    sha: newCommit.sha
+  })
 
   // create the bump pull request
   const pullRequest = await createPullRequest({
     owner,
     repo,
     token,
-    title: `Bump versions in ${env} for release management`,
+    title: `Bump editor and server to ${tag} in ${env} for release management`,
     head: branchName,
     base: 'main',
     body: `## Motivation
 
-Bump editor and server versions for release management
+Bump editor and server versions to ${tag} in ${env} for release management
     `
   })
 
-  // auto approval for pull request
   if (ghApprovalToken) {
+    // auto approve the pull request
     await createApprovalForPullRequest({
       owner,
       repo,
       token: ghApprovalToken,
       pullNumber: pullRequest.number,
-      commitId: lastCommit.commit.sha
+      commitId: newCommit.sha
     })
-
-    // auto approve the pull request
   }
-
   return pullRequest
 }
