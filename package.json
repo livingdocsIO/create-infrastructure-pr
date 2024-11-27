@@ -1,0 +1,38 @@
+{
+  "name": "@livingdocs/create-infrastructure-pr",
+  "version": "0.0.0-development",
+  "description": "",
+  "main": "index.js",
+  "bin": "./cli.js",
+  "author": "Jordi Vives",
+  "license": "MIT",
+  "dependencies": {
+    "comment-json": "^4.2.3",
+    "lodash": "^4.17.4",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.5",
+    "semver": "5.5.1",
+    "yargs": "^12.0.2"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "semantic-release": "semantic-release",
+    "travis-deploy-once": "travis-deploy-once"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/livingdocsIO/create-infrastructure-pr.git"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "semantic-release": "^15.12.0",
+    "travis-deploy-once": "^5.0.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bugs": {
+    "url": "https://github.com/livingdocsIO/create-infrastructure-pr/issues"
+  },
+  "homepage": "https://github.com/livingdocsIO/create-infrastructure-pr#readme"
+}
