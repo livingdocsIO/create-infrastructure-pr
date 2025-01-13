@@ -13,7 +13,7 @@ async function updateYamlFile ({owner, repo, token, path, tag}) {
   const base64Obj = await gitGetContent({owner, repo, token, path})
   if (base64Obj) {
     const content = Buffer.from(base64Obj.content, 'base64').toString()
-    const updatedContent = content.replace(/range: ".*"/, `range: "${tag}"`)
+    const updatedContent = content.replace(/range:\s*".*"/, `range: "${tag}"`)
     const contentUpdate = Buffer.from(updatedContent).toString('base64')
     const blob = await createBlob({owner, repo, token, content: contentUpdate})
     return {
